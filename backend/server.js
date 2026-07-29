@@ -10,11 +10,20 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
-app.use("/uploads", express.static("uploads"));
 
+// Make sure uploads folder exists
+const uploadsDir = path.join(__dirname, "uploads");
+
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+app.use("/uploads", express.static(uploadsDir));
+
+// Multer storage
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, "uploads/");
+    cb(null, uploadsDir);
   },
 
   filename: (req, file, cb) => {
@@ -29,12 +38,17 @@ app.get("/", (req, res) => {
   res.send("Vision-Based Campus AI Backend is Running 🚀");
 });
 
-// Upload + AI Detection route
+// Upload + AI Detection
 app.post("/upload", upload.single("image"), async (req, res) => {
   try {
+    if (!req.file) {
+      return res.status(400).json({
+        message: "No image uploaded",
+      });
+    }
+
     const imagePath = path.join(
-      __dirname,
-      "uploads",
+      uploadsDir,
       req.file.filename
     );
 
@@ -45,35 +59,50 @@ app.post("/upload", upload.single("image"), async (req, res) => {
       fs.createReadStream(imagePath)
     );
 
+    const AI_SERVICE_URL =
+      process.env.AI_SERVICE_URL ||
+      "http://127.0.0.1:8000";
+
     const aiResponse = await axios.post(
-      "http://127.0.0.1:8000/detect",
+      `${AI_SERVICE_URL}/detect`,
       formData,
       {
         headers: formData.getHeaders(),
+        timeout: 120000,
       }
     );
+
+    const backendURL =
+      process.env.BACKEND_URL ||
+      `${req.protocol}://${req.get("host")}`;
 
     res.json({
       message: "Image Uploaded Successfully",
       filename: req.file.filename,
-      imageUrl: `http://localhost:5000/uploads/${req.file.filename}`,
-      detectedText: aiResponse.data.detected_text,
+      imageUrl:
+        `${backendURL}/uploads/${req.file.filename}`,
+      detectedText:
+        aiResponse.data.detected_text || [],
     });
 
   } catch (error) {
-    console.error("AI Error:", error.message);
+    console.error(
+      "AI Error:",
+      error.response?.data || error.message
+    );
 
     res.status(500).json({
       message: "AI Detection Failed",
-      error: error.message,
+      error:
+        error.response?.data ||
+        error.message,
     });
   }
 });
 
-const PORT = 5000;
+// Render provides PORT automatically
+const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
-  console.log(
-    `Server running on http://localhost:${PORT}`
-  );
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server running on port ${PORT}`);
 });
