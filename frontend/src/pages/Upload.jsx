@@ -41,7 +41,7 @@ function Upload() {
       setDetectedText([]);
 
       const response = await axios.post(
-        "http://localhost:5000/upload",
+        "https://vision-based-smart-campus-navigation.onrender.com/upload",,
         formData
       );
 
@@ -97,7 +97,7 @@ function Upload() {
                 Vision Engine Ready
               </div>
 
-              <span>EasyOCR</span>
+              <span>Google Vision OCR</span>
             </div>
 
             <label className="upload-zone">
@@ -250,7 +250,7 @@ function Upload() {
           <div>
             <span>02</span>
             <h4>Detect</h4>
-            <p>EasyOCR extracts visible text using computer vision.</p>
+            <p>Google Vision OCR extracts visible text from campus images.</p>
           </div>
 
           <div>
