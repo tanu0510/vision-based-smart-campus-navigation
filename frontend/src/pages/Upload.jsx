@@ -41,7 +41,7 @@ function Upload() {
       setDetectedText([]);
 
       const response = await axios.post(
-        "https://vision-based-smart-campus-navigation.onrender.com/upload",,
+        "https://vision-based-smart-campus-navigation.onrender.com/upload",
         formData
       );
 
