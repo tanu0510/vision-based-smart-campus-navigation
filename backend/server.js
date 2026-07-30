@@ -4,14 +4,13 @@ const multer = require("multer");
 const path = require("path");
 const axios = require("axios");
 const fs = require("fs");
-const FormData = require("form-data");
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
-// Make sure uploads folder exists
+// Ensure uploads folder exists
 const uploadsDir = path.join(__dirname, "uploads");
 
 if (!fs.existsSync(uploadsDir)) {
@@ -27,19 +26,42 @@ const storage = multer.diskStorage({
   },
 
   filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname));
+    cb(null, `${Date.now()}${path.extname(file.originalname)}`);
   },
 });
 
-const upload = multer({ storage });
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10 MB
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = [
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
+      "image/webp",
+    ];
+
+    if (!allowedTypes.includes(file.mimetype)) {
+      return cb(
+        new Error("Only JPG, JPEG, PNG and WEBP images are allowed.")
+      );
+    }
+
+    cb(null, true);
+  },
+});
 
 // Test route
 app.get("/", (req, res) => {
   res.send("Vision-Based Campus AI Backend is Running 🚀");
 });
 
-// Upload + AI Detection
+// Upload image + Google Vision OCR
 app.post("/upload", upload.single("image"), async (req, res) => {
+  let imagePath;
+
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -47,57 +69,108 @@ app.post("/upload", upload.single("image"), async (req, res) => {
       });
     }
 
-    const imagePath = path.join(
-      uploadsDir,
-      req.file.filename
-    );
+    const apiKey = process.env.GOOGLE_VISION_API_KEY;
 
-    const formData = new FormData();
+    if (!apiKey) {
+      return res.status(500).json({
+        message: "Google Vision API key is not configured",
+      });
+    }
 
-    formData.append(
-      "file",
-      fs.createReadStream(imagePath)
-    );
+    imagePath = path.join(uploadsDir, req.file.filename);
 
-    const AI_SERVICE_URL =
-      process.env.AI_SERVICE_URL ||
-      "http://127.0.0.1:8000";
+    // Convert uploaded image into Base64
+    const imageBase64 = fs.readFileSync(imagePath).toString("base64");
 
-    const aiResponse = await axios.post(
-      `${AI_SERVICE_URL}/detect`,
-      formData,
+    const visionResponse = await axios.post(
+      `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`,
       {
-        headers: formData.getHeaders(),
+        requests: [
+          {
+            image: {
+              content: imageBase64,
+            },
+            features: [
+              {
+                type: "TEXT_DETECTION",
+                maxResults: 50,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
         timeout: 120000,
       }
     );
+
+    const result = visionResponse.data.responses?.[0];
+
+    if (result?.error) {
+      throw new Error(result.error.message || "Google Vision OCR failed");
+    }
+
+    /*
+      textAnnotations[0] contains complete detected text.
+      Remaining entries contain individual words/text regions.
+    */
+    const completeText =
+      result?.textAnnotations?.[0]?.description?.trim() || "";
+
+    const detectedText = completeText
+      ? completeText
+          .split(/\r?\n/)
+          .map((text) => text.trim())
+          .filter(Boolean)
+      : [];
 
     const backendURL =
       process.env.BACKEND_URL ||
       `${req.protocol}://${req.get("host")}`;
 
-    res.json({
-      message: "Image Uploaded Successfully",
+    return res.json({
+      message: "Image uploaded and text detected successfully",
       filename: req.file.filename,
-      imageUrl:
-        `${backendURL}/uploads/${req.file.filename}`,
-      detectedText:
-        aiResponse.data.detected_text || [],
+      imageUrl: `${backendURL}/uploads/${req.file.filename}`,
+      detectedText,
+      fullDetectedText: completeText,
     });
-
   } catch (error) {
     console.error(
-      "AI Error:",
+      "Google Vision Error:",
       error.response?.data || error.message
     );
 
-    res.status(500).json({
-      message: "AI Detection Failed",
+    return res.status(500).json({
+      message: "Text detection failed",
       error:
+        error.response?.data?.error?.message ||
         error.response?.data ||
         error.message,
     });
   }
+});
+
+// Multer and file upload error handler
+app.use((error, req, res, next) => {
+  if (error instanceof multer.MulterError) {
+    return res.status(400).json({
+      message: "Image upload failed",
+      error: error.message,
+    });
+  }
+
+  if (error) {
+    return res.status(400).json({
+      message: "Invalid image",
+      error: error.message,
+    });
+  }
+
+  next();
 });
 
 // Render provides PORT automatically
