@@ -17,7 +17,20 @@ import "../App.css";
 
 import campusLocations from "../data/campusLocations";
 import campusGraph from "../data/campusGraph";
-import dijkstra from "../data/dijkstra";
+import dijkstra from "../data/dijkstra"; 
+import L from "leaflet";
+
+import markerIcon from "leaflet/dist/images/marker-icon.png";
+import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
+import markerShadow from "leaflet/dist/images/marker-shadow.png";
+
+delete L.Icon.Default.prototype._getIconUrl;
+
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: markerIcon2x,
+  iconUrl: markerIcon,
+  shadowUrl: markerShadow,
+});
 
 function MapController({ center }) {
   const map = useMap();
