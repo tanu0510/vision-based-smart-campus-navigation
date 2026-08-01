@@ -4,8 +4,8 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const { createWorker } = require("tesseract.js");
-
 const app = express();
+const sharp = require("sharp");
 
 app.use(cors());
 app.use(express.json());
